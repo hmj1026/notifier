@@ -252,10 +252,63 @@ fi
 
 ---
 
+## 多排程監控
+
+當專案有多個排程任務（如 `postOrder.sh`、`getAllocate.sh`）時，可透過命令列參數指定各自的 Log 檔名和顯示名稱。
+
+### 命令格式
+
+```bash
+php notifyResult.php <專案路徑> [notifier路徑] [Log檔名] [任務名稱]
+```
+
+| 參數 | 說明 | 範例 |
+|-----|------|-----|
+| 專案路徑 | 必填。專案根目錄 | `/var/www/project` |
+| notifier路徑 | 選填。留空 `""` 自動偵測 | `""` 或 `/opt/notifier` |
+| Log檔名 | 選填。覆寫 `.env` 的 LOG_FILENAME | `postOrder.log` |
+| 任務名稱 | 選填。通知顯示名稱 | `訂單上傳` |
+
+### 範例：多排程腳本
+
+**postOrder.sh：**
+```bash
+# ... (建立目錄的程式碼) ...
+/opt/lampp/bin/php $documentRoot/postOrder.php $documentRoot >> $documentRoot/log/$year/$month/$day/postOrder.log
+
+# 發送通知 (指定 Log 檔名和任務名稱)
+/opt/lampp/bin/php $documentRoot/notifyResult.php $documentRoot "" postOrder.log "訂單上傳"
+```
+
+**getAllocate.sh：**
+```bash
+# ... (建立目錄的程式碼) ...
+/opt/lampp/bin/php $documentRoot/getAllocate.php $documentRoot >> $documentRoot/log/$year/$month/$day/getAllocate.log
+
+# 發送通知
+/opt/lampp/bin/php $documentRoot/notifyResult.php $documentRoot "" getAllocate.log "配額取得"
+```
+
+### 通知訊息範例
+
+```
+✅ [訂單上傳] 執行成功
+
+📅 執行時間：2026-01-22 11:30:00
+📊 處理筆數：25 筆
+
+📂 Log 位置：log/2026/01/22/postOrder.log
+```
+
+---
+
 ## 測試驗證
 
 ### 1. 語法檢查
 
+根據您選擇的安裝模式檢查語法：
+
+**內嵌模式：**
 ```bash
 cd /var/www/YOUR_PROJECT
 php -l src/Notifier.php
@@ -264,22 +317,176 @@ php -l src/Notifier/GoogleChatNotifier.php
 php -l notifyResult.php
 ```
 
-**預期結果：** 所有檔案 `No syntax errors detected`
-
-### 2. 手動測試通知
-
+**lib 模式：**
 ```bash
-# 確保今日有 log 檔案
-ls log/$(date +%Y)/$(date +%m)/$(date +%d)/SendDelivery.log
-
-# 執行通知程式
-php notifyResult.php /var/www/YOUR_PROJECT
-
-# 預期輸出：
-# 通知發送成功
+cd /var/www/YOUR_PROJECT
+php -l lib/notifier/src/Notifier.php
+php -l lib/notifier/src/LogAnalyzer.php
+php -l lib/notifier/src/Notifier/GoogleChatNotifier.php
+php -l notifyResult.php
 ```
 
-### 3. 除錯模式測試
+**預期結果：** 所有檔案輸出 `No syntax errors detected`
+
+---
+
+### 2. 單排程專案測試（如 zdnServiceKPMC）
+
+#### 步驟 1：確認環境變數
+
+確保 `.env` 已配置：
+```ini
+NOTIFY_ENABLED=true
+GOOGLE_CHAT_WEBHOOK=您的_WEBHOOK_URL
+LOG_FILENAME=SendDelivery.log
+```
+
+#### 步驟 2：建立測試 Log
+
+```bash
+cd /var/www/YOUR_PROJECT
+
+# 建立今日目錄
+TODAY_DIR="log/$(date +%Y/%m/%d)"
+mkdir -p "$TODAY_DIR"
+
+# 建立成功的測試 log
+echo "本次執行總共取得 13 筆資料
+銷售人員: 70013
+銷售人員: 00073" > "$TODAY_DIR/SendDelivery.log"
+```
+
+#### 步驟 3：執行測試
+
+```bash
+php notifyResult.php /var/www/YOUR_PROJECT
+```
+
+**預期輸出：**
+```
+通知發送成功
+```
+
+#### 步驟 4：驗證 Google Chat 訊息
+
+檢查 Google Chat 應收到：
+```
+✅ [YOUR_PROJECT] 執行成功
+
+📅 執行時間：2026-01-22 11:55:00
+📊 處理筆數：13 筆
+👤 銷售人員：70013, 00073
+
+📂 Log 位置：log/2026/01/22/SendDelivery.log
+```
+
+#### 步驟 5：測試失敗情境
+
+```bash
+# 建立失敗的測試 log
+echo "無法取得WebService結構, 中斷執行" > "$TODAY_DIR/SendDelivery.log"
+
+# 再次執行
+php notifyResult.php /var/www/YOUR_PROJECT
+```
+
+**預期 Google Chat 訊息：**
+```
+❌ [YOUR_PROJECT] 執行失敗
+
+⚠️ 錯誤類型：WebService 結構取得失敗
+💡 可能原因：請檢查 WebService 連線或服務狀態
+
+請儘速檢查處理！
+
+📂 Log 位置：log/2026/01/22/SendDelivery.log
+```
+
+---
+
+### 3. 多排程專案測試（如 zdnServiceANE072）
+
+#### 步驟 1：確認環境變數
+
+確保 `.env` 已配置：
+```ini
+NOTIFY_ENABLED=true
+GOOGLE_CHAT_WEBHOOK=您的_WEBHOOK_URL
+LOG_DIRECTORY=log
+# LOG_FILENAME 可省略，會用命令列參數覆寫
+```
+
+#### 步驟 2：建立多個測試 Log
+
+```bash
+cd /var/www/YOUR_PROJECT
+
+# 建立今日目錄
+TODAY_DIR="log/$(date +%Y/%m/%d)"
+mkdir -p "$TODAY_DIR"
+
+# 建立 postOrder 成功的測試 log
+echo "本次執行總共取得 5 筆資料" > "$TODAY_DIR/postOrder.log"
+
+# 建立 getAllocate 成功的測試 log
+echo "本次執行總共取得 10 筆資料" > "$TODAY_DIR/getAllocate.log"
+
+# 建立 postERPData 失敗的測試 log
+echo "無法取得WebService結構, 中斷執行" > "$TODAY_DIR/postERPData.log"
+```
+
+#### 步驟 3：分別測試各排程
+
+```bash
+# 測試 postOrder（訂單上傳）
+php notifyResult.php /var/www/YOUR_PROJECT "" postOrder.log "訂單上傳"
+
+# 測試 getAllocate（配額取得）
+php notifyResult.php /var/www/YOUR_PROJECT "" getAllocate.log "配額取得"
+
+# 測試 postERPData（失敗情境）
+php notifyResult.php /var/www/YOUR_PROJECT "" postERPData.log "ERP資料上傳"
+```
+
+#### 步驟 4：驗證 Google Chat 訊息
+
+應收到三則訊息：
+
+**訊息 1（成功）：**
+```
+✅ [訂單上傳] 執行成功
+
+📅 執行時間：2026-01-22 11:55:00
+📊 處理筆數：5 筆
+
+📂 Log 位置：log/2026/01/22/postOrder.log
+```
+
+**訊息 2（成功）：**
+```
+✅ [配額取得] 執行成功
+
+📅 執行時間：2026-01-22 11:55:05
+📊 處理筆數：10 筆
+
+📂 Log 位置：log/2026/01/22/getAllocate.log
+```
+
+**訊息 3（失敗）：**
+```
+❌ [ERP資料上傳] 執行失敗
+
+⚠️ 錯誤類型：WebService 結構取得失敗
+💡 可能原因：請檢查 WebService 連線或服務狀態
+
+請儘速檢查處理！
+
+📂 Log 位置：log/2026/01/22/postERPData.log
+```
+
+---
+
+### 4. 除錯模式測試
 
 如需查看詳細資訊，修改 `.env`：
 
@@ -287,24 +494,26 @@ php notifyResult.php /var/www/YOUR_PROJECT
 DEBUG_MODE=true
 ```
 
-重新執行：
+重新執行測試指令，會輸出：
 
-```bash
-php notifyResult.php /var/www/YOUR_PROJECT
 ```
-
-### 4. 驗證 Google Chat 收到訊息
-
-檢查 Google Chat 空間是否收到通知訊息。
-
-**成功訊息範例：**
-```
-✅ SendDelivery 執行成功
-
-📅 執行時間：2026-01-22 06:00:49
-📊 處理筆數：13 筆
-👤 銷售人員：70013, 00073
-📂 Log 位置：log/2026/01/22/SendDelivery.log
+=== 除錯訊息 ===
+Log 路徑: /var/www/YOUR_PROJECT/log/2026/01/22/postOrder.log
+分析結果: Array
+(
+    [success] => 1
+    [recordsProcessed] => 5
+    [personIds] => Array()
+    [errorType] => 
+    [errorHint] => 
+    [logPath] => log/2026/01/22/postOrder.log
+    [projectName] => 訂單上傳
+)
+通知訊息:
+✅ [訂單上傳] 執行成功
+...
+================
+通知發送成功
 ```
 
 ---

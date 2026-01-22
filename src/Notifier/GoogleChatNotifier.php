@@ -116,6 +116,27 @@ class GoogleChatNotifier extends BaseNotifier
 			}
 			$msg .= "\n請儘速檢查處理！";
 		}
+		
+		// ANE072 批次統計資訊（如果有）
+		if (isset($analysis['successCount']) || isset($analysis['failureCount'])) {
+			$msg .= "\n\n📊 處理統計：\n";
+			$msg .= '　　總筆數：' . $analysis['recordsProcessed'] . " 筆\n";
+			$msg .= '　　成功：' . $analysis['successCount'] . " 筆\n";
+			$msg .= '　　失敗：' . $analysis['failureCount'] . " 筆\n";
+			
+			// 錯誤訊息統計（折疊顯示）
+			if (!empty($analysis['errorBreakdown'])) {
+				$msg .= "\n⚠️ 失敗原因統計：\n";
+				
+				// 按照筆數排序（從多到少）
+				$errorBreakdown = $analysis['errorBreakdown'];
+				arsort($errorBreakdown);
+				
+				foreach ($errorBreakdown as $errorMsg => $count) {
+					$msg .= '　　• ' . $errorMsg . '：' . $count . " 筆\n";
+				}
+			}
+		}
 
 		$logPath = isset($analysis['logPath']) ? $analysis['logPath'] : '';
 		$msg .= "\n📂 Log 位置：" . $logPath;

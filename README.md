@@ -49,8 +49,16 @@ vendor/bin/phpunit
 
 ### 3. 發送通知
 
+**單一排程：**
 ```bash
 php notifyResult.php /path/to/project
+```
+
+**多排程監控：**
+```bash
+# 指定不同的 Log 檔名和任務顯示名稱
+php notifyResult.php /path/to/project "" postOrder.log "訂單上傳"
+php notifyResult.php /path/to/project "" getAllocate.log "配額取得"
 ```
 
 ---

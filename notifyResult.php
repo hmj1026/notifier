@@ -1,12 +1,22 @@
 <?php
 /**
- * SendDelivery 執行結果通知程式
+ * 排程執行結果通知程式
  *
  * 分析 log 檔案並發送通知至 Google Chat。
  * 語法相容 PHP 5.6。
  *
  * 用法：
- *   php notifyResult.php /path/to/project [/path/to/notifier]
+ *   php notifyResult.php <專案路徑> [notifier路徑] [Log檔名] [任務名稱]
+ *
+ * 參數說明：
+ *   專案路徑    - 必填。目標專案的根目錄路徑
+ *   notifier路徑 - 選填。留空 "" 表示自動偵測
+ *   Log檔名     - 選填。覆寫 .env 的 LOG_FILENAME (例: postOrder.log)
+ *   任務名稱    - 選填。通知顯示名稱 (例: 訂單上傳)，預設為專案名稱
+ *
+ * 範例：
+ *   php notifyResult.php /var/www/project "" postOrder.log "訂單上傳"
+ *   php notifyResult.php /var/www/project "" getAllocate.log "配額取得"
  *
  * 安裝模式：
  *   1. 內嵌模式：src/ 在專案根目錄
@@ -32,8 +42,8 @@ if (isset($argv[1])) {
 // 設定 Notifier 路徑 (支援多種安裝模式)
 $notifierPath = null;
 
-// 1. 優先使用第二個命令列參數
-if (isset($argv[2])) {
+// 1. 優先使用第二個命令列參數 (空字串表示自動偵測)
+if (isset($argv[2]) && $argv[2] !== '') {
 	$notifierPath = rtrim($argv[2], '/\\') . '/';
 }
 
@@ -80,6 +90,8 @@ if (!$notifierClassesLoaded) {
 	require_once NOTIFIER_PATH . 'src/utility.php';
 	require_once NOTIFIER_PATH . 'src/Notifier.php';
 	require_once NOTIFIER_PATH . 'src/LogAnalyzer.php';
+	require_once NOTIFIER_PATH . 'src/LogAnalyzer/KPMCLogAnalyzer.php';
+	require_once NOTIFIER_PATH . 'src/LogAnalyzer/ANE072LogAnalyzer.php';
 	require_once NOTIFIER_PATH . 'src/Notifier/GoogleChatNotifier.php';
 }
 
@@ -104,6 +116,13 @@ function main()
 	// 取得 Log 設定
 	$logDirectory = getConfig($settings, 'LOG_DIRECTORY', 'log');
 	$logFilename = getConfig($settings, 'LOG_FILENAME', 'SendDelivery.log');
+
+	// 命令列參數覆寫：$argv[3] = Log 檔名, $argv[4] = 任務名稱
+	global $argv;
+	if (isset($argv[3]) && $argv[3] !== '') {
+		$logFilename = $argv[3];
+	}
+	$jobName = isset($argv[4]) && $argv[4] !== '' ? $argv[4] : '';
 
 	// 組合今日 log 路徑
 	$logPath = sprintf(
@@ -131,11 +150,19 @@ function main()
 		return 1;
 	}
 
-	// 取得專案名稱 (從資料夾名稱)
-	$projectName = basename(rtrim(DOCROOT, '/\\'));
+	// 取得任務顯示名稱
+	// 優先使用命令列參數 $argv[4]，其次使用專案資料夾名稱
+	$projectName = !empty($jobName) ? $jobName : basename(rtrim(DOCROOT, '/\\'));
 
-	// 分析 log
-	$analyzer = new LogAnalyzer();
+	// 根據專案路徑自動判斷 Log 格式類型
+	// 使用 DOCROOT 而非 $projectName，因為 $projectName 可能被 jobName 覆蓋
+	$logFormat = 'kpmc';  // 預設格式
+	if (stripos(DOCROOT, 'ANE072') !== false) {
+		$logFormat = 'ane072';
+	}
+
+	// 使用工廠方法建立對應的 Log 分析器
+	$analyzer = LogAnalyzer::create($logFormat);
 	$analysis = $analyzer->analyze($logContent, $logPath, $projectName);
 
 	// 檢查通知策略
@@ -155,7 +182,7 @@ function main()
 	}
 
 	// 取得超時設定
-	$timeout = (int) getConfig($settings, 'NOTIFY_TIMEOUT', 30);
+	$timeout = (int)getConfig($settings, 'NOTIFY_TIMEOUT', 30);
 
 	// 建立通知器
 	$notifier = new GoogleChatNotifier($webhookUrl, true, $timeout);

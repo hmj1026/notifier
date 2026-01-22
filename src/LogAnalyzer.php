@@ -24,7 +24,7 @@ class LogAnalyzer
 	 */
 	public function __construct()
 	{
-		// 預設失敗模式
+		// 預設失敗模式 (適用於 KPMC 格式)
 		$this->failurePatterns = [
 			[
 				'pattern'   => '/無法取得.*結構, 中斷執行/',
@@ -56,9 +56,11 @@ class LogAnalyzer
 
 	/**
 	 * 分析 Log 內容
+	 * 預設實作 KPMC 格式分析邏輯 (為了向下相容)
 	 *
-	 * @param string $content Log 內容
-	 * @param string $logPath Log 檔案路徑
+	 * @param string $content     Log 內容
+	 * @param string $logPath     Log 檔案路徑
+	 * @param string $projectName 專案/任務名稱
 	 *
 	 * @return array 分析結果
 	 */
@@ -75,7 +77,7 @@ class LogAnalyzer
 		];
 
 		// 檢查失敗模式
-		foreach ($this->failurePatterns as $pattern) {
+		foreach ($this->getFailurePatterns() as $pattern) {
 			if (preg_match($pattern['pattern'], $content)) {
 				$result['success'] = false;
 				$result['errorType'] = $pattern['errorType'];
@@ -124,4 +126,26 @@ class LogAnalyzer
 	{
 		return $this->failurePatterns;
 	}
+
+	/**
+	 * 建立 Log 分析器（工廠方法）
+	 *
+	 * @param string $formatType 格式類型 (kpmc 或 ane072)
+	 *
+	 * @return LogAnalyzer 分析器實例
+	 */
+	public static function create($formatType = 'kpmc')
+	{
+		switch ($formatType) {
+			case 'ane072':
+				return new LogAnalyzer\ANE072LogAnalyzer();
+			case 'kpmc':
+				return new LogAnalyzer\KPMCLogAnalyzer();
+			default:
+				echo "不支援的 Log 格式: " . $formatType . PHP_EOL;
+
+				return null;
+		}
+	}
 }
+
