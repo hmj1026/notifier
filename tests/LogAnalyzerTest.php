@@ -278,4 +278,31 @@ response: {"result":[{"IfSucceed":"True","ErrMethodName":"","ErrMessage":"","IfB
 		$this->assertEquals(2, $result['recordsProcessed']);
 		$this->assertEquals(2, $result['successCount']);
 	}
+	/**
+	 * 測試 ANE072 格式：Unicode 解碼
+	 */
+	public function testAnalyzeANE072UnicodeDecoding()
+	{
+		$analyzer = new \Notifier\LogAnalyzer\ANE072LogAnalyzer();
+		// 模擬包含 Unicode escape 的 log
+		// \u55ae\u64da = 單據
+		$logContent = "
+============ Post Order Start ============
+Status: False ErrorMsg: \u55ae\u64da\u865f\u78bc [12345]\u5df2\u5b58\u5728!
+Status: False ErrorMsg: \u55ae\u64da\u865f\u78bc [67890]\u5df2\u5b58\u5728!
+============ Post Order End ============
+		";
+
+		$result = $analyzer->analyze($logContent, 'test.log', 'ANE072_Job');
+
+		// ANE072 邏輯：只要有處理記錄就算 Job 成功（因為是批次處理）
+		$this->assertTrue($result['success']);
+		$this->assertEquals(2, $result['failureCount']);
+		
+		// 驗證是否正確解碼且聚合
+		// "單據號碼 [XXXX]已存在!"
+		$expectedKey = '單據號碼 [XXXX]已存在!';
+		$this->assertArrayHasKey($expectedKey, $result['errorBreakdown']);
+		$this->assertEquals(2, $result['errorBreakdown'][$expectedKey]);
+	}
 }

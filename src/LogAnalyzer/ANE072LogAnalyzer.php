@@ -53,10 +53,10 @@ class ANE072LogAnalyzer extends LogAnalyzer
 
 		// 格式 1: "Status: True" 或 "Status: False ErrorMsg: XXXX"
 		// 格式 2: "IfSucceed":"True" 或 "IfSucceed":"False"
-		
+
 		// 將內容分割成行，避免正則表達式跨行匹配問題
 		$lines = preg_split('/(\r\n|\r|\n)/', $content);
-		
+
 		foreach ($lines as $line) {
 			$line = trim($line);
 			if (empty($line)) continue;
@@ -64,7 +64,7 @@ class ANE072LogAnalyzer extends LogAnalyzer
 			// 檢查 Status 行
 			if (preg_match('/Status:\s*(True|False)/i', $line, $statusMatch)) {
 				$isSuccess = (strcasecmp($statusMatch[1], 'True') === 0);
-				
+
 				// 提取 ErrorMsg (如果有)
 				$errorMsg = '';
 				if (preg_match('/ErrorMsg:\s*(.*)/', $line, $errMsgMatch)) {
@@ -93,7 +93,7 @@ class ANE072LogAnalyzer extends LogAnalyzer
 				if (preg_match('/"IfSucceed":\s*"(True|False)"/i', $line, $ifSucceedMatch)) {
 					$isSuccess = (strcasecmp($ifSucceedMatch[1], 'True') === 0);
 					$errorMsg = '';
-					
+
 					if (preg_match('/"ErrMessage":\s*"([^"]*)"/', $line, $errMsgMatch)) {
 						$errorMsg = trim($errMsgMatch[1]);
 					}
@@ -195,14 +195,22 @@ class ANE072LogAnalyzer extends LogAnalyzer
 	 */
 	private function normalizeErrorMessage($errorMsg)
 	{
-		// 替換 [XXXXXXXX] 格式的單據號碼為 [XXXX]
+		// 1. 嘗試解碼 Unicode Escape (例如 \u55ae\u64da)
+		if (strpos($errorMsg, '\u') !== false) {
+			$decoded = json_decode('"' . $errorMsg . '"');
+			if (json_last_error() === JSON_ERROR_NONE && is_string($decoded)) {
+				$errorMsg = $decoded;
+			}
+		}
+
+		// 2. 替換 [XXXXXXXX] 格式的單據號碼為 [XXXX]
 		$normalized = preg_replace('/\\[[0-9]+\\]/', '[XXXX]', $errorMsg);
 
-		// 替換日期格式 YYYY-MM-DD 或 YYYYMMDD
+		// 3. 替換日期格式 YYYY-MM-DD 或 YYYYMMDD
 		$normalized = preg_replace('/\\d{4}-\\d{2}-\\d{2}/', 'YYYY-MM-DD', $normalized);
 		$normalized = preg_replace('/\\b\\d{8}\\b/', 'YYYYMMDD', $normalized);
 
-		// 替換時間格式 HH:MM:SS
+		// 4. 替換時間格式 HH:MM:SS
 		return preg_replace('/\\d{2}:\\d{2}:\\d{2}/', 'HH:MM:SS', $normalized);
 	}
 }

@@ -56,12 +56,20 @@ class GoogleChatNotifier extends BaseNotifier
 			return true;
 		}
 
-		$payload = json_encode(['text' => $message]);
+		// 判斷 $message 是否已經是 JSON (Cards 格式)
+		$payload = '';
+		$firstChar = substr(trim($message), 0, 1);
+		if ($firstChar === '{' && (strpos($message, '"cards"') !== false || strpos($message, '"cardsV2"') !== false)) {
+			$payload = $message;
+		} else {
+			// 一般文字訊息，包裝成 text payload
+			$payload = json_encode(['text' => $message]);
+		}
 
 		$ch = curl_init($this->webhookUrl);
 		curl_setopt($ch, CURLOPT_POST, true);
 		curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-		curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json; charset=UTF-8']);
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 		curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
 		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
@@ -90,58 +98,117 @@ class GoogleChatNotifier extends BaseNotifier
 	public function formatMessage($analysis)
 	{
 		$isSuccess = isset($analysis['success']) ? $analysis['success'] : false;
-		$projectName = isset($analysis['projectName']) && !empty($analysis['projectName'])
+		$projectName = !empty($analysis['projectName'])
 			? $analysis['projectName']
 			: 'SendDelivery';
 		$icon = $isSuccess ? '✅' : '❌';
 		$status = $isSuccess ? '執行成功' : '執行失敗';
+		$timestamp = date('Y-m-d H:i:s');
 
-		$msg = $icon . ' [' . $projectName . '] ' . $status . "\n\n";
-		$msg .= '📅 執行時間：' . date('Y-m-d H:i:s') . "\n";
+		$sections = [];
 
+		// 1. 基本資訊區塊
+		$widgets = [];
+
+		// 處理筆數與銷售人員
 		if ($isSuccess) {
 			$recordsProcessed = isset($analysis['recordsProcessed']) ? $analysis['recordsProcessed'] : 0;
-			$msg .= '📊 處理筆數：' . $recordsProcessed . " 筆\n";
+			$infoText = "📊 <b>處理筆數</b>：{$recordsProcessed} 筆";
 
 			if (!empty($analysis['personIds'])) {
-				$msg .= '👤 銷售人員：' . implode(', ', $analysis['personIds']) . "\n";
+				$infoText .= "\n👤 <b>銷售人員</b>：" . implode(', ', $analysis['personIds']);
 			}
+			$widgets[] = ['textParagraph' => ['text' => $infoText]];
 		} else {
+			// 錯誤類型與提示
 			$errorType = isset($analysis['errorType']) ? $analysis['errorType'] : '未知錯誤';
 			$errorHint = isset($analysis['errorHint']) ? $analysis['errorHint'] : '';
 
-			$msg .= '⚠️ 錯誤類型：' . $errorType . "\n";
+			$errorText = "⚠️ <b>錯誤類型</b>：{$errorType}";
 			if (!empty($errorHint)) {
-				$msg .= '💡 可能原因：' . $errorHint . "\n";
+				$errorText .= "\n💡 <b>可能原因</b>：{$errorHint}";
 			}
-			$msg .= "\n請儘速檢查處理！";
+			$errorText .= "\n<font color=\"#ff0000\">請儘速檢查處理！</font>";
+			$widgets[] = ['textParagraph' => ['text' => $errorText]];
 		}
-		
-		// ANE072 批次統計資訊（如果有）
+
+		$sections[] = [
+			'widgets' => $widgets,
+		];
+
+		// 2. 批次處理統計區塊 (ANE072)
 		if (isset($analysis['successCount']) || isset($analysis['failureCount'])) {
-			$msg .= "\n\n📊 處理統計：\n";
-			$msg .= '　　總筆數：' . $analysis['recordsProcessed'] . " 筆\n";
-			$msg .= '　　成功：' . $analysis['successCount'] . " 筆\n";
-			$msg .= '　　失敗：' . $analysis['failureCount'] . " 筆\n";
-			
-			// 錯誤訊息統計（折疊顯示）
+			$statsWidgets = [];
+			$statsText = "📊 <b>處理統計</b>：\n";
+			$statsText .= "　　總筆數：" . $analysis['recordsProcessed'] . " 筆\n";
+			$statsText .= "　　成功：" . $analysis['successCount'] . " 筆\n";
+			$statsText .= "　　失敗：" . $analysis['failureCount'] . " 筆";
+			$statsWidgets[] = ['textParagraph' => ['text' => $statsText]];
+
+			$sections[] = [
+				'header'  => '批次統計',
+				'widgets' => $statsWidgets,
+			];
+
+			// 3. 失敗原因統計 (折疊區塊)
 			if (!empty($analysis['errorBreakdown'])) {
-				$msg .= "\n⚠️ 失敗原因統計：\n";
-				
-				// 按照筆數排序（從多到少）
 				$errorBreakdown = $analysis['errorBreakdown'];
 				arsort($errorBreakdown);
-				
+
+				$breakdownWidgets = [];
 				foreach ($errorBreakdown as $errorMsg => $count) {
-					$msg .= '　　• ' . $errorMsg . '：' . $count . " 筆\n";
+					// 避免文字過長導致顯示問題
+					$displayMsg = $this->strLen($errorMsg) > 100
+						? $this->subStr($errorMsg, 0, 100) . '...'
+						: $errorMsg;
+					$breakdownWidgets[] = [
+						'textParagraph' => [
+							'text' => "• {$displayMsg}：<b>{$count}</b> 筆",
+						],
+					];
 				}
+
+				$sections[] = [
+					'header'                    => '⚠️ 失敗原因統計',
+					'collapsible'               => true,
+					'uncollapsibleWidgetsCount' => 0,
+					'widgets'                   => $breakdownWidgets,
+				];
 			}
 		}
 
+		// 4. Log 位置區塊
 		$logPath = isset($analysis['logPath']) ? $analysis['logPath'] : '';
-		$msg .= "\n📂 Log 位置：" . $logPath;
+		if (!empty($logPath)) {
+			$sections[] = [
+				'widgets' => [
+					[
+						'textParagraph' => [
+							'text' => "📂 <b>Log 位置</b>：{$logPath}",
+						],
+					],
+				],
+			];
+		}
 
-		return $msg;
+		// 建立完整 Card 結構
+		$cardStructure = [
+			'cardsV2' => [
+				[
+					'cardId' => uniqid(),
+					'card'   => [
+						'header'   => [
+							'title'    => "{$icon} [{$projectName}] {$status}",
+							'subtitle' => "📅 執行時間：{$timestamp}",
+						],
+						'sections' => $sections,
+					],
+				],
+			],
+		];
+
+		// 回傳 JSON 字串 (不轉義 Unicode，確保中文顯示正常)
+		return json_encode($cardStructure, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 	}
 
 	/**
@@ -164,5 +231,39 @@ class GoogleChatNotifier extends BaseNotifier
 	public function setWebhookUrl($webhookUrl)
 	{
 		$this->webhookUrl = $webhookUrl;
+	}
+
+	/**
+	 * 取得字串長度 (相容模式)
+	 *
+	 * @param string $str
+	 *
+	 * @return int
+	 */
+	private function strLen($str)
+	{
+		if (function_exists('mb_strlen')) {
+			return mb_strlen($str, 'UTF-8');
+		}
+
+		return strlen($str);
+	}
+
+	/**
+	 * 取得子字串 (相容模式)
+	 *
+	 * @param string $str
+	 * @param int    $start
+	 * @param int    $length
+	 *
+	 * @return string
+	 */
+	private function subStr($str, $start, $length)
+	{
+		if (function_exists('mb_substr')) {
+			return mb_substr($str, $start, $length, 'UTF-8');
+		}
+
+		return substr($str, $start, $length);
 	}
 }
