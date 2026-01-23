@@ -23,10 +23,13 @@
 notifier/
 ├── src/                          # 核心程式碼 (PSR-4 命名空間: Notifier\)
 │   ├── Notifier.php              # 抽象基底類別
-│   ├── LogAnalyzer.php           # Log 分析器
+│   ├── LogAnalyzer.php           # Log 分析器 (Factory)
 │   ├── utility.php               # 工具函式
-│   └── Notifier/
-│       └── GoogleChatNotifier.php  # Google Chat Webhook 實作
+│   ├── Notifier/
+│   │   └── GoogleChatNotifier.php  # Google Chat Webhook 實作
+│   └── LogAnalyzer/
+│       ├── KPMCLogAnalyzer.php     # KPMC 格式實作
+│       └── ANE072LogAnalyzer.php   # ANE072 格式實作
 ├── tests/                        # 單元測試
 │   ├── bootstrap.php             # 測試啟動檔
 │   ├── LogAnalyzerTest.php       # LogAnalyzer 測試
@@ -45,6 +48,7 @@ notifier/
 |---------|------|------|
 | `Notifier\` | `src/` | 核心類別 |
 | `Notifier\Notifier\` | `src/Notifier/` | 具體通知器實作 |
+| `Notifier\LogAnalyzer\` | `src/LogAnalyzer/` | Log 分析器實作 |
 | `Notifier\Tests\` | `tests/` | 單元測試 |
 
 ---
@@ -66,11 +70,30 @@ abstract class Notifier
 ```
 
 ### 2. LogAnalyzer (Log 分析器)
-
-分析 log 檔案內容，判斷執行結果。
-
-**預設失敗模式：**
-
+ 
+分析 log 檔案內容，判斷執行結果。此類別實作了 Factory Pattern，根據不同專案格式產生對應的分析器。
+ 
+**支援格式：**
+ 
+- `kpmc` (預設)：適用於 KPMC 專案
+- `ane072`：適用於 ANE072 專案 (支援聚合統計)
+ 
+**基本用法：**
+ 
+```php
+// 使用 Factory 建立分析器
+$analyzer = LogAnalyzer::create('kpmc'); // 或 'ane072'
+ 
+// 自訂失敗模式 (僅 KPMC 支援)
+$analyzer->addFailurePattern(
+    '/Custom Error/',
+    '自訂錯誤',
+    '自訂提示訊息'
+);
+```
+ 
+**預設失敗模式 (KPMC)：**
+ 
 | 關鍵字 | 錯誤類型 |
 |--------|---------|
 | `無法取得.*結構, 中斷執行` | WebService 結構取得失敗 |
@@ -78,17 +101,6 @@ abstract class Notifier
 | `Error Fetching http headers` | HTTP 連線失敗 |
 | `Exception:` | PHP 例外 |
 | `Upload Failed` | 上傳失敗 |
-
-**自訂失敗模式：**
-
-```php
-$analyzer = new LogAnalyzer();
-$analyzer->addFailurePattern(
-    '/Custom Error/',
-    '自訂錯誤',
-    '自訂提示訊息'
-);
-```
 
 ### 3. GoogleChatNotifier
 
@@ -223,8 +235,11 @@ use function Notifier\readIniFile;
 use function Notifier\getConfig;
 
 // 分析 Log
-$analyzer = new LogAnalyzer();
-$analysis = $analyzer->analyze($logContent, 'log/test.log');
+// 參數 1: Log 內容
+// 參數 2: Log 路徑 (用於顯示)
+// 參數 3: 專案名稱 (用於顯示)
+$analyzer = LogAnalyzer::create('kpmc');
+$analysis = $analyzer->analyze($logContent, 'log/test.log', 'TaskName');
 
 // 發送通知
 $notifier = new GoogleChatNotifier($webhookUrl);

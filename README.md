@@ -9,6 +9,7 @@
 - ✅ **PHP 5.6 相容**：支援舊系統環境
 - ✅ **PSR-4 Autoload**：符合現代 PHP 專案規範
 - ✅ **PHPUnit 5.7**：完整單元測試覆蓋
+- ✅ **多格式支援**：支援 KPMC 與 ANE072 Log 格式解析
 
 ---
 
@@ -69,10 +70,13 @@ php notifyResult.php /path/to/project "" getAllocate.log "配額取得"
 notifier/
 ├── src/                      # 核心類別 (PSR-4: Notifier\)
 │   ├── Notifier.php          # 抽象基底類別
-│   ├── LogAnalyzer.php       # Log 分析器
+│   ├── LogAnalyzer.php       # Log 分析器 (Factory)
 │   ├── utility.php           # 工具函式
-│   └── Notifier/
-│       └── GoogleChatNotifier.php  # Google Chat 實作
+│   ├── Notifier/
+│   │   └── GoogleChatNotifier.php  # Google Chat 實作
+│   └── LogAnalyzer/
+│       ├── KPMCLogAnalyzer.php     # KPMC 格式實作
+│       └── ANE072LogAnalyzer.php   # ANE072 格式實作
 ├── tests/                    # 單元測試
 │   ├── bootstrap.php
 │   ├── LogAnalyzerTest.php
@@ -114,7 +118,8 @@ use Notifier\LogAnalyzer;
 use Notifier\Notifier\GoogleChatNotifier;
 
 // 1. 分析 Log
-$analyzer = new LogAnalyzer();
+// 支援格式：'kpmc' (預設) 或 'ane072'
+$analyzer = LogAnalyzer::create('ane072');
 $analysis = $analyzer->analyze($logContent, $logPath);
 
 // 2. 發送通知

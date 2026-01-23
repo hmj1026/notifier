@@ -66,8 +66,11 @@ cp /path/to/notifier/notifyResult.php ./notifyResult.php
 ├── src/                        # [新增]
 │   ├── Notifier.php
 │   ├── LogAnalyzer.php
-│   └── Notifier/
-│       └── GoogleChatNotifier.php
+│   ├── Notifier/
+│   │   └── GoogleChatNotifier.php
+│   └── LogAnalyzer/
+│       ├── KPMCLogAnalyzer.php
+│       └── ANE072LogAnalyzer.php
 ├── notifyResult.php            # [新增]
 └── ...
 ```
@@ -101,8 +104,11 @@ cp /path/to/notifier/notifyResult.php ./notifyResult.php
 │       └── src/
 │           ├── Notifier.php
 │           ├── LogAnalyzer.php
-│           └── Notifier/
-│               └── GoogleChatNotifier.php
+│           ├── Notifier/
+│           │   └── GoogleChatNotifier.php
+│           └── LogAnalyzer/
+│               └── KPMCLogAnalyzer.php
+│               └── ANE072LogAnalyzer.php
 ├── notifyResult.php            # [新增]
 └── ...
 ```
@@ -152,8 +158,11 @@ NOTIFIER_PATH=/opt/notifier
 ```bash
 chmod 644 src/*.php 2>/dev/null
 chmod 644 src/Notifier/*.php 2>/dev/null
+chmod 644 src/LogAnalyzer/*.php 2>/dev/null
 chmod 644 lib/notifier/src/*.php 2>/dev/null
 chmod 644 lib/notifier/src/Notifier/*.php 2>/dev/null
+chmod 644 lib/notifier/src/LogAnalyzer/*.php 2>/dev/null
+chmod 644 notifyResult.php
 chmod 755 notifyResult.php
 ```
 
@@ -314,6 +323,8 @@ cd /var/www/YOUR_PROJECT
 php -l src/Notifier.php
 php -l src/LogAnalyzer.php
 php -l src/Notifier/GoogleChatNotifier.php
+php -l src/LogAnalyzer/KPMCLogAnalyzer.php
+php -l src/LogAnalyzer/ANE072LogAnalyzer.php
 php -l notifyResult.php
 ```
 
@@ -323,6 +334,7 @@ cd /var/www/YOUR_PROJECT
 php -l lib/notifier/src/Notifier.php
 php -l lib/notifier/src/LogAnalyzer.php
 php -l lib/notifier/src/Notifier/GoogleChatNotifier.php
+php -l lib/notifier/src/LogAnalyzer/KPMCLogAnalyzer.php
 php -l notifyResult.php
 ```
 
