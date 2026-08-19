@@ -1,6 +1,7 @@
 {
     "name": "your-org/notifier",
     "description": "通用通知服務框架，支援 Google Chat Webhook，相容 PHP 5.6",
+    "version": "1.0.0",
     "type": "library",
     "license": "MIT",
     "require": {
