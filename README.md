@@ -10,6 +10,7 @@
 - ✅ **PSR-4 Autoload**：符合現代 PHP 專案規範
 - ✅ **PHPUnit 5.7**：完整單元測試覆蓋
 - ✅ **多格式支援**：支援 KPMC 與 ANE072 Log 格式解析
+- ✅ **服務健康監控**：可插拔的服務健康檢查、異常/恢復通知、每日日報（見 [`monitorServices.php`](#4-服務健康監控)）
 
 ---
 
@@ -61,6 +62,18 @@ php notifyResult.php /path/to/project
 php notifyResult.php /path/to/project "" postOrder.log "訂單上傳"
 php notifyResult.php /path/to/project "" getAllocate.log "配額取得"
 ```
+
+### 4. 服務健康監控
+
+獨立於上述 Log 通知功能，`monitorServices.php` 提供可插拔的服務健康監控（定期檢查、異常/恢復通知、每日日報）：
+
+```bash
+cp .env.example .env
+vim .env   # 設定 MONITOR_SERVICES 等
+php monitorServices.php check --dry-run
+```
+
+詳見 [服務健康監控說明](docs/SERVICE_MONITOR.md)。
 
 ---
 
@@ -133,6 +146,8 @@ $result = $notifier->send($message, $analysis['success']);
 ## 文件
 
 - [詳細使用說明](docs/USAGE.md) - 架構說明、部署步驟、整合指南
+- [服務健康監控說明](docs/SERVICE_MONITOR.md) - 可插拔健康檢查、CLI、設定
+- [服務健康監控部署說明](docs/DEPLOY_SERVICE_MONITOR.md) - 獨立主機部署步驟（佔位符，可進版控）
 
 ---
 

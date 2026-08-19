@@ -39,6 +39,11 @@ Thumbs.db
 /log/
 
 # ================================================
+# 服務健康監控資料 (state.json、每日 log、日報 sent marker)
+# ================================================
+/storage/service-monitor/
+
+# ================================================
 # 舊版目錄 (已遷移至 src/)
 # ================================================
 /Library/
@@ -51,7 +56,10 @@ Thumbs.db
 .claude/
 .cursor/
 .codex/
+.hyperweave/
 /AGENTS.md
+prompts.md
+propmts.md
 
 # OpenSpec：只版控 baseline specs，其餘維持忽略
 # 必須忽略目錄「內容」而非整個 openspec/，否則 !specs 無法生效
