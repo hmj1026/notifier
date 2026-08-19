@@ -12,7 +12,7 @@
 4. [新增受監控服務](#新增受監控服務)
 5. [CLI 用法](#cli-用法)
 6. [Cron 排程](#cron-排程)
-7. [vm2 LAMPP 部署範例](#vm2-lampp-部署範例)
+7. [獨立主機部署](#獨立主機部署)
 8. [常見問題](#常見問題)
 
 ---
@@ -55,12 +55,14 @@ monitorServices.php                     # CLI 進入點
 
 ## 部署步驟
 
-服務監控依 [D8 部署獨立性] 設計，**應獨立 clone 部署**，不要與既有 per-service 的 notifier 部署目錄共用（例如不要塞進某個 `zdnServiceXXX/lib/notifier/` 目錄），避免生命週期互相牽連。
+服務監控依部署獨立性設計，**應獨立 clone 部署**，不要與既有 per-service 的 notifier 目錄共用（例如不要塞進 `YOUR_EXISTING_SERVICE_PATH/lib/notifier/`），避免生命週期互相牽連。
+
+逐步操作（佔位符、Webhook 沿用或獨立、健康檢查覆寫、cron）見 [服務健康監控部署說明](DEPLOY_SERVICE_MONITOR.md)。摘要：
 
 ```bash
-# 1. 獨立 clone
-git clone https://your-repo/notifier.git /opt/service-monitor
-cd /opt/service-monitor
+# 1. 獨立 clone 到 YOUR_MONITOR_PATH（不要裝進既有業務服務目錄）
+git clone -b YOUR_BRANCH YOUR_GIT_REMOTE YOUR_MONITOR_PATH
+cd YOUR_MONITOR_PATH
 
 # 2. 安裝依賴（有 composer 的環境）
 composer install --no-dev --optimize-autoloader
@@ -68,10 +70,11 @@ composer install --no-dev --optimize-autoloader
 
 # 3. 設定環境變數
 cp .env.example .env
-vim .env   # 至少設定 MONITOR_SERVICES 與對應服務的設定、GOOGLE_CHAT_WEBHOOK
+# 至少設定 MONITOR_SERVICES、對應服務覆寫，以及本目錄的 GOOGLE_CHAT_WEBHOOK
 
 # 4. 先以 dry-run 確認判定結果與預計發送內容正確，才加入 cron
 php monitorServices.php check --dry-run
+# 部署後若要確認 Google Chat 通道：php monitorServices.php check --notify-now
 ```
 
 `--dry-run` 會顯示每個服務的判定結果與預計發送的 Cards V2 內容（已遮罩疑似秘密值），但不會實際發送通知、不會更新 `state.json`、不會寫入任何 sent marker。**務必先確認 dry-run 結果正確再啟用 cron**，避免部署瞬間因設定不符實際環境（例如健康檢查 URL 預設值不適用）而發送錯誤告警。
@@ -109,7 +112,7 @@ MONITOR_SERVICE_REDIS_EXPECTED_OUTPUT_CONTAINS=PONG
 
 ```bash
 # 執行一次健康檢查
-php monitorServices.php check [--dry-run]
+php monitorServices.php check [--dry-run] [--notify-now]
 
 # 產生並發送前一日日報（預設日期為系統時區的昨天）
 php monitorServices.php report [--date=YYYY-MM-DD] [--force] [--dry-run]
@@ -117,6 +120,8 @@ php monitorServices.php report [--date=YYYY-MM-DD] [--force] [--dry-run]
 # 查看每個服務最後一次檢查的狀態（唯讀，即使 SERVICE_MONITOR_ENABLED=false 仍可用）
 php monitorServices.php status
 ```
+
+`--notify-now`：在本次檢查之後，**不論是否觸發異常／恢復告警**，都額外發送一則涵蓋所有受監控服務的現況訊息，用來確認 Google Chat 通知通道可用。初次全健康時一般 `check` 不會發通知，部署後請用這個旗標做通道驗證。可與 `--dry-run` 併用（只預覽、不發送）。通道未設定時非 dry-run 的 `--notify-now` 會以 exit code `1` 失敗。
 
 **exit code：**
 
@@ -133,9 +138,9 @@ php monitorServices.php status
 ## Cron 排程
 
 ```cron
-CRON_TZ=Asia/Taipei
-*/5 * * * * cd /opt/service-monitor && php monitorServices.php check >> storage/service-monitor/logs/cron.log 2>&1
-0 9 * * *   cd /opt/service-monitor && php monitorServices.php report >> storage/service-monitor/logs/cron.log 2>&1
+CRON_TZ=YOUR_TIMEZONE
+*/5 * * * * cd YOUR_MONITOR_PATH && YOUR_PHP monitorServices.php check >> storage/service-monitor/logs/cron.log 2>&1
+0 9 * * *   cd YOUR_MONITOR_PATH && YOUR_PHP monitorServices.php report >> storage/service-monitor/logs/cron.log 2>&1
 ```
 
 - `check` 排程間隔應與 `.env` 的 `MONITOR_INTERVAL_MINUTES` 一致。
@@ -146,38 +151,16 @@ CRON_TZ=Asia/Taipei
 
 ---
 
-## vm2 LAMPP 部署範例
+## 獨立主機部署
 
-以下設定基於 2026-08-19 對 vm2（GCP Compute Engine `web-service-2`，Ubuntu 24.04.1 LTS）的唯讀盤點結果：
+完整步驟、佔位符對照、Webhook 沿用或獨立、健康檢查覆寫與 cron，見 [服務健康監控部署說明](DEPLOY_SERVICE_MONITOR.md)。
 
-- `curl http://127.0.0.1/` 回傳 **403**（目錄禁止列出/無預設首頁），不是 `.env.example` 預設假設的 200——**部署時務必覆寫健康檢查 URL 或期望狀態碼範圍**，否則啟用瞬間就會發送一次錯誤的異常告警。
-- `lampp status` 顯示 MySQL 當時未啟動——這與「curl 健康檢查回應」是兩件獨立的事，不能混為一談；`http` 型別的健康判定完全依據自身的檢查結果，`lampp status` 只是附加診斷資訊。
-- vm2 上已有既有 notifier 部署（`/var/www/zdnServiceKPMC/lib/notifier`、`/var/www/zdnServiceANE072/lib/notifier`）——服務監控應獨立 clone 到 `/opt/service-monitor` 之類的路徑，不要塞進這些既有目錄。
-- vm2 未安裝 composer——`monitorServices.php` 會自動降級為手動 `require_once` 載入，不需要額外處理。
+LAMPP／Apache／MySQL 部署時請在目標主機自行確認後覆寫設定，不要假設 `.env.example` 預設值適用：
 
-vm2 專用 `.env` 片段（其餘沿用 `.env.example` 預設值）：
-
-```ini
-SERVICE_MONITOR_HOST_NAME=web-service-2
-MONITOR_SERVICES=apache,mysql
-
-# vm2 實測：根目錄回 403，調整為接受 200-403 視為健康
-# （若能改用一個會回 200 的健康檢查路徑，優先使用該路徑）
-APACHE_HEALTHCHECK_URL=http://127.0.0.1/
-APACHE_HTTP_MIN_STATUS=200
-APACHE_HTTP_MAX_STATUS=403
-
-MYSQL_HEALTHCHECK_MODE=ping
-MYSQLADMIN_PATH=/opt/lampp/bin/mysqladmin
-```
-
-部署前務必先執行：
-
-```bash
-php monitorServices.php check --dry-run
-```
-
-確認兩個服務的判定結果符合預期，再加入 cron。
+- `http://127.0.0.1/` 可能不是 200（例如無預設首頁而回 403）。請改用會回預期狀態碼的 URL 或 `APACHE_HEALTHCHECK_HOST_HEADER`，或刻意調整狀態碼範圍。
+- `lampp status` 與 HTTP 健康檢查是兩件事；MySQL 未啟動時，若 `MONITOR_SERVICES` 含 `mysql`，第一次正式 `check` 就會告警。
+- 目標主機若沒有 Composer，略過 `composer install` 即可。
+- 安裝路徑必須讓執行 cron 的使用者可寫；不要裝進既有業務服務的 `lib/notifier/`。
 
 ---
 

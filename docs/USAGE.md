@@ -2,7 +2,7 @@
 
 本文件提供 Notification Service 的完整使用指南，包含架構說明、部署步驟與整合方式。
 
-> 本文件涵蓋 `notifyResult.php`（Log 分析與通知）。服務健康監控（`monitorServices.php`）是獨立的能力，見 [服務健康監控說明](SERVICE_MONITOR.md)。
+> 本文件涵蓋 `notifyResult.php`（Log 分析與通知）。服務健康監控（`monitorServices.php`）是獨立的能力，見 [服務健康監控說明](SERVICE_MONITOR.md) 與 [部署說明](DEPLOY_SERVICE_MONITOR.md)。
 
 ---
 

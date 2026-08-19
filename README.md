@@ -146,7 +146,8 @@ $result = $notifier->send($message, $analysis['success']);
 ## 文件
 
 - [詳細使用說明](docs/USAGE.md) - 架構說明、部署步驟、整合指南
-- [服務健康監控說明](docs/SERVICE_MONITOR.md) - 可插拔健康檢查、部署步驟、vm2 範例
+- [服務健康監控說明](docs/SERVICE_MONITOR.md) - 可插拔健康檢查、CLI、設定
+- [服務健康監控部署說明](docs/DEPLOY_SERVICE_MONITOR.md) - 獨立主機部署步驟（佔位符，可進版控）
 
 ---
 
