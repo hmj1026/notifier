@@ -51,6 +51,7 @@ Thumbs.db
 .claude/
 .cursor/
 .codex/
+/AGENTS.md
 
 # OpenSpec：只版控 baseline specs，其餘維持忽略
 # 必須忽略目錄「內容」而非整個 openspec/，否則 !specs 無法生效
