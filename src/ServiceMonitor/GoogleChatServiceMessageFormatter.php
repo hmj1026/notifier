@@ -3,7 +3,7 @@
  * 服務監控訊息格式化器
  *
  * 建立 Cards V2 格式的 JSON payload（異常告警／重複提醒／恢復通知／
- * 每日日報），不修改也不繼承既有的 GoogleChatNotifier::formatMessage()
+ * 每日日報／手動現況快照），不修改也不繼承既有的 GoogleChatNotifier::formatMessage()
  * （該方法是既有 log 分析專用）。details{} 一律通用 key/value 渲染，
  * 不對任何服務別做特殊分支。動態內容（checker message、details 值、
  * 最常見錯誤摘要）在組出文字前先遮罩疑似秘密值並做 HTML escape，
@@ -67,6 +67,52 @@ class GoogleChatServiceMessageFormatter
 			'📅 日期：' . $report['date'],
 			$sections
 		);
+	}
+
+	/**
+	 * 格式化一則涵蓋本次所有服務結果的現況訊息（手動確認通知通道用）
+	 *
+	 * 不依 serviceKey 分支；每筆結果用自身的 label / status / message。
+	 *
+	 * @param array  $results  serviceKey => check() 結果
+	 * @param string $hostName
+	 *
+	 * @return string Cards V2 JSON 字串
+	 */
+	public function formatStatusSnapshot(array $results, $hostName)
+	{
+		$sections = [];
+		$checkedAt = '';
+
+		foreach ($results as $result) {
+			if ($checkedAt === '' && !empty($result['checkedAt'])) {
+				$checkedAt = $result['checkedAt'];
+			}
+
+			$label = isset($result['label']) ? $result['label'] : $result['serviceKey'];
+			$status = isset($result['status']) ? $result['status'] : 'unknown';
+			$icon = ($status === 'healthy') ? '✅' : (($status === 'unhealthy') ? '❌' : '❓');
+			$message = isset($result['message']) ? $result['message'] : '';
+
+			$sections[] = [
+				'header'  => $label,
+				'widgets' => [
+					['textParagraph' => ['text' => $icon . ' <b>' . $this->sanitizeText($status) . '</b>：' . $this->sanitizeText($message)]],
+				],
+			];
+		}
+
+		if (empty($sections)) {
+			$sections[] = [
+				'widgets' => [
+					['textParagraph' => ['text' => '沒有任何服務檢查結果']],
+				],
+			];
+		}
+
+		$subtitle = ($checkedAt !== '') ? ('📅 檢查時間：' . $checkedAt) : '手動發送，用以確認通知通道';
+
+		return $this->buildCard("📋 [{$hostName}] 當前檢測狀況", $subtitle, $sections);
 	}
 
 	/**

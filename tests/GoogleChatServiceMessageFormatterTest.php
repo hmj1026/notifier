@@ -113,6 +113,61 @@ class GoogleChatServiceMessageFormatterTest extends PHPUnit_Framework_TestCase
 		$this->assertContains('password=***', $json);
 	}
 
+	public function testStatusSnapshotUsesCardsV2AndIncludesEveryService()
+	{
+		$formatter = new GoogleChatServiceMessageFormatter();
+
+		$json = $formatter->formatStatusSnapshot(
+			[
+				'svc_ok' => $this->checkResult([
+					'serviceKey' => 'svc_ok',
+					'label'      => 'Web',
+					'status'     => 'healthy',
+					'message'    => 'HTTP 健康檢查通過',
+					'details'    => [],
+				]),
+				'svc_bad' => $this->checkResult([
+					'serviceKey' => 'svc_bad',
+					'label'      => 'Database',
+					'status'     => 'unhealthy',
+					'message'    => 'ping 失敗',
+				]),
+			],
+			'host-a'
+		);
+
+		$data = json_decode($json, true);
+
+		$this->assertArrayHasKey('cardsV2', $data);
+		$title = $data['cardsV2'][0]['card']['header']['title'];
+		$this->assertContains('host-a', $title);
+		$this->assertContains('當前檢測狀況', $title);
+
+		$rendered = json_encode($data['cardsV2'][0]['card']['sections']);
+		$this->assertContains('Web', $rendered);
+		$this->assertContains('Database', $rendered);
+		$this->assertContains('healthy', $rendered);
+		$this->assertContains('unhealthy', $rendered);
+	}
+
+	public function testStatusSnapshotMasksSuspectedSecrets()
+	{
+		$formatter = new GoogleChatServiceMessageFormatter();
+
+		$json = $formatter->formatStatusSnapshot(
+			[
+				'svc_ok' => $this->checkResult([
+					'message' => 'failed token=super-secret-value',
+					'details' => [],
+				]),
+			],
+			'host'
+		);
+
+		$this->assertNotContains('super-secret-value', $json);
+		$this->assertContains('token=***', $json);
+	}
+
 	public function testDailyReportNoDataShowsWarningNotFalseHealthy()
 	{
 		$formatter = new GoogleChatServiceMessageFormatter();

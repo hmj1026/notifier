@@ -8,7 +8,7 @@
  * 語法相容 PHP 5.6。
  *
  * 用法：
- *   php monitorServices.php check [--dry-run]
+ *   php monitorServices.php check [--dry-run] [--notify-now]
  *   php monitorServices.php report [--date=YYYY-MM-DD] [--force] [--dry-run]
  *   php monitorServices.php status
  *
@@ -111,7 +111,7 @@ function main(array $argv)
 	$options = parseOptions(array_slice($argv, 2));
 
 	if (!in_array($command, ['check', 'report', 'status'], true)) {
-		echo "用法：php monitorServices.php <check|report|status> [--dry-run] [--date=YYYY-MM-DD] [--force]\n";
+		echo "用法：php monitorServices.php <check|report|status> [--dry-run] [--notify-now] [--date=YYYY-MM-DD] [--force]\n";
 
 		return 1;
 	}
@@ -139,9 +139,10 @@ function main(array $argv)
 	}
 
 	$dryRun = !empty($options['dry-run']);
+	$notifyNow = !empty($options['notify-now']);
 
 	if ($command === 'check') {
-		return runCheck($settings, $storagePath, $hostName, $clock, $dryRun);
+		return runCheck($settings, $storagePath, $hostName, $clock, $dryRun, $notifyNow);
 	}
 
 	return runReport($settings, $storagePath, $hostName, $clock, $dryRun, $options);
@@ -203,10 +204,11 @@ function parseOptions(array $args)
  * @param string         $hostName
  * @param ClockInterface $clock
  * @param bool           $dryRun
+ * @param bool           $notifyNow 檢查後額外發送一則現況訊息（確認通知通道）
  *
  * @return int Exit code
  */
-function runCheck(array $settings, $storagePath, $hostName, ClockInterface $clock, $dryRun)
+function runCheck(array $settings, $storagePath, $hostName, ClockInterface $clock, $dryRun, $notifyNow = false)
 {
 	$http = new CurlHttpClient();
 	$cmd = new ShellCommandRunner();
@@ -256,6 +258,14 @@ function runCheck(array $settings, $storagePath, $hostName, ClockInterface $cloc
 		}
 
 		printCheckSummary($outcome, $dryRun);
+
+		if ($notifyNow) {
+			$snapshotCode = sendCurrentStatusSnapshot($settings, $outcome, $hostName, $dryRun);
+
+			if ($snapshotCode !== 0) {
+				return $snapshotCode;
+			}
+		}
 
 		return $outcome['anyUnhealthy'] ? 2 : 0;
 	} finally {
@@ -378,6 +388,49 @@ function printCheckSummary(array $outcome, $dryRun)
 		$icon = $result['status'] === 'healthy' ? '✅' : ($result['status'] === 'unhealthy' ? '❌' : '❓');
 		echo "{$icon} {$serviceKey} [{$result['label']}]：{$result['status']} - {$result['message']}\n";
 	}
+}
+
+/**
+ * 發送（或 dry-run 預覽）本次檢查的現況 Cards V2 訊息
+ *
+ * @param array  $settings
+ * @param array  $outcome
+ * @param string $hostName
+ * @param bool   $dryRun
+ *
+ * @return int 0 成功預覽或已發送；1 通道未設定或發送失敗
+ */
+function sendCurrentStatusSnapshot(array $settings, array $outcome, $hostName, $dryRun)
+{
+	$formatter = new GoogleChatServiceMessageFormatter();
+	$message = $formatter->formatStatusSnapshot($outcome['results'], $hostName);
+
+	if ($dryRun) {
+		echo "=== 現況訊息（dry-run，不會實際發送）===\n";
+		echo $message . "\n";
+
+		return 0;
+	}
+
+	$notifier = buildGoogleChatNotifier($settings);
+
+	if ($notifier === null) {
+		echo "通知未啟用或缺少 GOOGLE_CHAT_WEBHOOK，無法發送現況訊息\n";
+
+		return 1;
+	}
+
+	$sender = new GoogleChatNotificationSender($formatter, $notifier);
+
+	if (!$sender->sendStatusSnapshot($outcome['results'], $hostName)) {
+		echo "現況訊息發送失敗\n";
+
+		return 1;
+	}
+
+	echo "現況訊息已發送，請到 Google Chat 確認通知通道可用\n";
+
+	return 0;
 }
 
 /**

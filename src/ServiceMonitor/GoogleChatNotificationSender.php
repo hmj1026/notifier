@@ -46,4 +46,27 @@ class GoogleChatNotificationSender implements NotificationSenderInterface
 
 		return $this->notifier->send($message, $isSuccess);
 	}
+
+	/**
+	 * 發送一則涵蓋本次所有服務結果的現況訊息
+	 *
+	 * @param array  $results  serviceKey => check() 結果
+	 * @param string $hostName
+	 *
+	 * @return bool
+	 */
+	public function sendStatusSnapshot(array $results, $hostName)
+	{
+		$message = $this->formatter->formatStatusSnapshot($results, $hostName);
+		$anyUnhealthy = false;
+
+		foreach ($results as $result) {
+			if (isset($result['status']) && $result['status'] === 'unhealthy') {
+				$anyUnhealthy = true;
+				break;
+			}
+		}
+
+		return $this->notifier->send($message, !$anyUnhealthy);
+	}
 }

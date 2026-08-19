@@ -36,4 +36,26 @@ class GoogleChatNotificationSenderTest extends PHPUnit_Framework_TestCase
 
 		$this->assertTrue($result);
 	}
+
+	public function testSendStatusSnapshotDelegatesToNotifierAndReturnsItsResult()
+	{
+		$notifier = new GoogleChatNotifier('https://fake-webhook.url', false);
+		$sender = new GoogleChatNotificationSender(new GoogleChatServiceMessageFormatter(), $notifier);
+
+		$results = [
+			'svc_ok' => [
+				'serviceKey' => 'svc_ok',
+				'label'      => 'Web',
+				'status'     => 'healthy',
+				'checkedAt'  => '2026-01-15T08:05:00+08:00',
+				'latencyMs'  => 1,
+				'method'     => 'http',
+				'message'    => 'ok',
+				'diagnostic' => [],
+				'details'    => [],
+			],
+		];
+
+		$this->assertTrue($sender->sendStatusSnapshot($results, 'host'));
+	}
 }
