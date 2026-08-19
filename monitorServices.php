@@ -122,7 +122,7 @@ function main(array $argv)
 		$hostName = gethostname();
 	}
 
-	$storagePath = DOCROOT . rtrim(getConfig($settings, 'MONITOR_STORAGE_PATH', 'storage/service-monitor'), '/\\');
+	$storagePath = resolveStoragePath(getConfig($settings, 'MONITOR_STORAGE_PATH', 'storage/service-monitor'));
 	$clock = new SystemClock();
 
 	// status 為唯讀診斷指令，即使 SERVICE_MONITOR_ENABLED=false 仍可查詢既有資料
@@ -145,6 +145,25 @@ function main(array $argv)
 	}
 
 	return runReport($settings, $storagePath, $hostName, $clock, $dryRun, $options);
+}
+
+/**
+ * 將 MONITOR_STORAGE_PATH 解析為絕對路徑：已是絕對路徑（以 / 開頭）時原樣使用，
+ * 否則視為相對於 monitorServices.php 所在目錄
+ *
+ * @param string $rawPath
+ *
+ * @return string
+ */
+function resolveStoragePath($rawPath)
+{
+	$rawPath = rtrim($rawPath, '/\\');
+
+	if (strpos($rawPath, '/') === 0) {
+		return $rawPath;
+	}
+
+	return DOCROOT . $rawPath;
 }
 
 /**
@@ -220,6 +239,13 @@ function runCheck(array $settings, $storagePath, $hostName, ClockInterface $cloc
 		$incidentManager = new IncidentManager($clock, $failureThreshold, $recoveryThreshold, $repeatAlertMinutes);
 
 		$totalBudgetSeconds = (int)getConfig($settings, 'MONITOR_CHECK_TOTAL_BUDGET_SECONDS', ServiceMonitor::DEFAULT_TOTAL_BUDGET_SECONDS);
+
+		// 空字串（例如 .env 寫成 MONITOR_CHECK_TOTAL_BUDGET_SECONDS=）會被 (int) 轉成 0，
+		// 若不擋下會讓第一個服務就判定預算已耗盡，整批全部標記為 unknown
+		if ($totalBudgetSeconds <= 0) {
+			$totalBudgetSeconds = ServiceMonitor::DEFAULT_TOTAL_BUDGET_SECONDS;
+		}
+
 		$notificationSender = $dryRun ? null : buildNotificationSender($settings);
 
 		$monitor = new ServiceMonitor($checkers, $stateRepository, $logRepository, $incidentManager, $clock, $hostName, $totalBudgetSeconds, $notificationSender);
@@ -257,6 +283,13 @@ function runReport(array $settings, $storagePath, $hostName, ClockInterface $clo
 	$generator = new DailyReportGenerator($logRepository, $clock, $storagePath, $intervalMinutes);
 
 	$date = (isset($options['date']) && $options['date'] !== true) ? $options['date'] : dateOffsetDays($clock, -1);
+
+	if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+		echo "錯誤：--date 必須為 YYYY-MM-DD 格式\n";
+
+		return 1;
+	}
+
 	$force = !empty($options['force']);
 
 	if (!$dryRun && !$force && $generator->isAlreadySent($date)) {
